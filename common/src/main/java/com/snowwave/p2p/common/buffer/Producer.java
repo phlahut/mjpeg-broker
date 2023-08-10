@@ -36,7 +36,7 @@ public class Producer {
 
     public void publish() {
         long index = cursor.get();
-        ringBuffer.notifyObservers(cursor.get());
+        ringBuffer.notifyObservers(index);
         log.debug("topic:{} written index:{} cost:{} millis", ringBuffer.getTopic(), index, cost());
     }
 
