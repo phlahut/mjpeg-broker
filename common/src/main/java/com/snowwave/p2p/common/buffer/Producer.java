@@ -48,10 +48,8 @@ public class Producer {
     }
 
     public ByteBuf next() {
-        long index = cursor.incrementAndGet();
-        ByteBuf slot = ringBuffer.nextWrite(index);
-        slot.ensureWritable(0, true);
-        return slot;
+        //slot.ensureWritable(0, true);
+        return ringBuffer.nextWrite(cursor.incrementAndGet());
     }
 
 
