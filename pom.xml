@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+    <parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>2.7.1</version>
+		<relativePath/> <!-- lookup parent from repository -->
+	</parent>
+	<packaging>pom</packaging>
+
+    <modules>
+        <module>common</module>
+        <module>app</module>
+        <module>starter</module>
+        <module>components</module>
+    </modules>
+
+    <groupId>com.snowwave.p2p.master</groupId>
+	<artifactId>p2p</artifactId>
+	<version>${reversion}</version>
+	<name>p2p</name>
+	<description>Demo project for Spring Boot</description>
+	<properties>
+		<java.version>1.8</java.version>
+        <reversion>1.0.0</reversion>
+	</properties>
+
+    <dependencyManagement>
+		<dependencies>
+            <!--module-->
+            <dependency>
+                <groupId>com.snowwave.p2p.master</groupId>
+                <artifactId>components</artifactId>
+                <version>${reversion}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.snowwave.p2p.master</groupId>
+                <artifactId>transport</artifactId>
+                <version>${reversion}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.snowwave.p2p.master</groupId>
+                <artifactId>app</artifactId>
+                <version>${reversion}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.snowwave.p2p.master</groupId>
+                <artifactId>common</artifactId>
+                <version>${reversion}</version>
+            </dependency>
+
+
+            <!--netty-->
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-all</artifactId>
+                <version>4.1.91.Final</version>
+            </dependency>
+
+            <!--logback-->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>1.7.25</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-core</artifactId>
+                <version>1.1.11</version>
+            </dependency>
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-classic</artifactId>
+                <version>1.1.11</version>
+            </dependency>
+
+            <!--fastjson-->
+            <dependency>
+                <groupId>com.alibaba</groupId>
+                <artifactId>fastjson</artifactId>
+                <version>1.2.83_noneautotype</version>
+            </dependency>
+
+            <!--基础依赖-->
+			<dependency>
+				<groupId>com.google.guava</groupId>
+				<artifactId>guava</artifactId>
+				<version>14.0.1</version>
+			</dependency>
+
+            <!--算盘sdk-->
+            <dependency>
+                <groupId>com.xuelangcloud</groupId>
+                <artifactId>suanpan-java-sdk</artifactId>
+                <version>2.1.2-hotfix.1</version>
+                <exclusions>
+                    <exclusion>
+                        <artifactId>aliyun-sdk-oss</artifactId>
+                        <groupId>com.aliyun.oss</groupId>
+                    </exclusion>
+                    <exclusion>
+                        <artifactId>minio</artifactId>
+                        <groupId>io.minio</groupId>
+                    </exclusion>
+                    <exclusion>
+                        <artifactId>socket.io-client</artifactId>
+                        <groupId>io.socket</groupId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+
+            <dependency>
+                <groupId>io.vertx</groupId>
+                <artifactId>vertx-core</artifactId>
+                <version>4.4.0</version>
+            </dependency>
+
+            <dependency>
+                <groupId>io.vertx</groupId>
+                <artifactId>vertx-web</artifactId>
+                <version>4.4.0</version>
+            </dependency>
+
+            <!-- https://mvnrepository.com/artifact/com.lmax/disruptor -->
+            <!--<dependency>
+                <groupId>com.lmax</groupId>
+                <artifactId>disruptor</artifactId>
+                <version>3.4.2</version>
+            </dependency>-->
+		</dependencies>
+	</dependencyManagement>
+</project>

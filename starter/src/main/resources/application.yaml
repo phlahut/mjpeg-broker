@@ -1,0 +1,41 @@
+project:
+  name: snowwave-p2p-master
+
+#spring:
+#  http:
+#    encoding:
+#      force-request: true
+#      force-response: true
+#      force: true
+#      charset: UTF-8
+#      enabled: true
+#  velocity:
+#    charset: UTF-8
+#  messages:
+#    encoding: UTF-8
+#  aop:
+#    proxy-target-class: true
+
+# http
+server:
+  jvm:
+    xms: 1024
+    xmx: 2048
+    arguments: -XX:+UseG1GC
+
+
+p2p:
+  server:
+    port: 9092
+web:
+  server:
+    port: 8080
+
+logging:
+  level:
+    com.snowwave.p2p: info
+
+
+
+
+
