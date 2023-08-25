@@ -15,12 +15,13 @@ import java.util.concurrent.ThreadPoolExecutor;
  */
 @Slf4j
 public class RingBuffer implements Observable {
-    private final Entry[] entries;
-    private final String topic;
-    private final int size;
+    private Entry[] entries;
+    private String topic;
+    private int size;
     private volatile long writeCursor;
     private volatile double averageWrittenCost = 50;
-    private final Map<String, Observer> consumerGroup = new ConcurrentHashMap<>();
+
+    private Map<String, Observer> consumerGroup = new ConcurrentHashMap<>();
 
     public RingBuffer(String topic, Integer size) {
         this.topic = topic;
@@ -50,6 +51,10 @@ public class RingBuffer implements Observable {
         return writeCursor;
     }
 
+    public int getWritePoint(){
+        return (int) (writeCursor % size);
+    }
+
     public ByteBuf nextWrite(long index){
         int ringPoint = (int) (index % size);
         ByteBuf item = entries[ringPoint].getData();
@@ -72,33 +77,31 @@ public class RingBuffer implements Observable {
 
 
     @Override
-    public void registerObserver(String id, Observer o) {
-        if (!consumerGroup.containsKey(id)) {
-            consumerGroup.put(id, o);
-        } else {
-            consumerGroup.replace(id, o);
-        }
+    public void registerObserver(String consumerId, Observer o) {
+        consumerGroup.putIfAbsent(consumerId, o);
     }
 
     @Override
-    public void removeObserver(String id) {
-        if (!consumerGroup.containsKey(id)) {
-            consumerGroup.remove(id);
-        }
+    public void removeObserver(String consumerId) {
+        consumerGroup.remove(consumerId);
     }
 
     @Override
     public void asyncNotifyObservers(long index) {
         if (!consumerGroup.isEmpty()) {
             ThreadPoolExecutor poolExecutor = ThreadPoolFactory.getThreadPool();
-            consumerGroup.values().forEach(observer -> poolExecutor.execute(() -> observer.update(index)));
+            consumerGroup.values().stream().forEach(observer -> {
+                poolExecutor.execute(() -> observer.update(index));
+            });
         }
     }
 
     @Override
     public void notifyObservers(long index) {
         if (!consumerGroup.isEmpty()) {
-            consumerGroup.values().parallelStream().forEach(observer -> observer.update(index));
+            consumerGroup.values().parallelStream().forEach(observer -> {
+                observer.update(index);
+            });
         }
     }
 

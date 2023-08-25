@@ -17,75 +17,89 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class BufferManager {
     private static final Map<String, Producer> PRODUCER_MAP = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Object> producerLocks = new ConcurrentHashMap<>();
-    private static final Map<String, List<String>> TOPIC_REL_CONSUMERKEYS = new ConcurrentHashMap<>();
-    private static final Map<String, Consumer> CONSUMER_MAP = new ConcurrentHashMap<>();
+    private static ConcurrentHashMap<String, Object> producerLocks = new ConcurrentHashMap<>();
+    private static final Map<String, Map<String, Consumer>> TOPIC_CONSUMERS_MAP = new ConcurrentHashMap<>();
 
-    public static Map<String, Producer> getProducerMap(){
+    public static Map<String, Producer> getProducerMap() {
         return PRODUCER_MAP;
     }
 
-    public static Map<String, Consumer> getConsumerMap(){
-        return CONSUMER_MAP;
+
+    public static Consumer getConsumer(String topic, String consumerId) {
+        Map<String, Consumer> consumerMap = TOPIC_CONSUMERS_MAP.get(topic);
+        if (consumerMap != null) {
+            return consumerMap.get(consumerId);
+        }
+        return null;
     }
+
+    public static Map<String, Consumer> getConsumers(String topic) {
+        return TOPIC_CONSUMERS_MAP.get(topic);
+    }
+
 
     public static Producer createProducer(String topic) {
-        producerLocks.putIfAbsent(topic, new Object());
-        synchronized (producerLocks.get(topic)){
-            if (!PRODUCER_MAP.containsKey(topic)) {
-                PRODUCER_MAP.put(topic, new Producer(new RingBuffer(topic, Constants.RING_BUFFER_SIZE)));
-                TOPIC_REL_CONSUMERKEYS.putIfAbsent(topic, new ArrayList<>());
-            }
-        }
-
-        return PRODUCER_MAP.get(topic);
+        return PRODUCER_MAP.computeIfAbsent(topic, k -> {
+            Producer producer = new Producer(new RingBuffer(topic, Constants.RING_BUFFER_SIZE));
+            return producer;
+        });
     }
+
+
 
     public static Consumer createOrGetConsumer(String topic, String consumerId, int fps) {
         if (!PRODUCER_MAP.containsKey(topic)) {
-            log.debug("topic has no producer, topic:{}", topic);
+            log.debug("topic has no producer, cannot create consumer, topic:{}", topic);
             return null;
         }
 
-        String consumerKey = topic + "_" + consumerId;
-        if (CONSUMER_MAP.containsKey(consumerKey)) {
-            return CONSUMER_MAP.get(consumerKey);
-        }
-
-        RingBuffer buffer = PRODUCER_MAP.get(topic).getRingBuffer();
-        Consumer newConsumer  = new Consumer(consumerId, buffer, fps);
-        Consumer previousConsumer = CONSUMER_MAP.putIfAbsent(consumerKey, newConsumer );
-        if (previousConsumer == null){
+        Map<String, Consumer> consumerMap = TOPIC_CONSUMERS_MAP.computeIfAbsent(topic, k -> new ConcurrentHashMap<>());
+        return consumerMap.computeIfAbsent(consumerId, s -> {
+            RingBuffer buffer = PRODUCER_MAP.get(topic).getRingBuffer();
+            Consumer newConsumer = new Consumer(consumerId, buffer, fps);
             buffer.registerObserver(consumerId, newConsumer);
-        } else {
-            newConsumer = previousConsumer;
-        }
-
-        TOPIC_REL_CONSUMERKEYS.computeIfAbsent(topic, k -> new ArrayList<>()).add(consumerKey);
-        return newConsumer;
+            return newConsumer;
+        });
     }
+
+
 
     public static void removeConsumer(String topic, String consumerId) {
-        String consumerKey = topic + "_" + consumerId;
-        if (CONSUMER_MAP.containsKey(consumerKey)) {
-            CONSUMER_MAP.remove(consumerKey);
-            TOPIC_REL_CONSUMERKEYS.get(topic).remove(consumerKey);
+        Map consumerMap = TOPIC_CONSUMERS_MAP.get(topic);
+        if (consumerMap != null) {
+            consumerMap.remove(consumerId);
+            RingBuffer buffer = PRODUCER_MAP.get(topic).getRingBuffer();
+            buffer.removeObserver(consumerId);
+            log.info("topic:{} remove idle consumer:{}", topic, consumerId);
         }
     }
 
-    public static void release(String topic) {
+    /*public static void release(String topic) {
         if (PRODUCER_MAP.containsKey(topic)) {
             PRODUCER_MAP.get(topic).release();
             PRODUCER_MAP.remove(topic);
             List<String> consumers = TOPIC_REL_CONSUMERKEYS.get(topic);
             if (!CollectionUtils.isEmpty(consumers)) {
-                for (String consumerKey: consumers){
+                for (String consumerKey : consumers) {
                     CONSUMER_MAP.get(consumerKey).release();
                     CONSUMER_MAP.remove(consumerKey);
                 }
             }
 
             TOPIC_REL_CONSUMERKEYS.remove(topic);
+        }
+    }*/
+
+    public static void release(String topic) {
+        if (PRODUCER_MAP.containsKey(topic)) {
+            PRODUCER_MAP.get(topic).release();
+            PRODUCER_MAP.remove(topic);
+
+            Map<String, Consumer> consumerMap = TOPIC_CONSUMERS_MAP.get(topic);
+            if (consumerMap != null) {
+                consumerMap.clear();
+                TOPIC_CONSUMERS_MAP.remove(topic);
+            }
         }
     }
 

@@ -1,10 +1,12 @@
 package com.snowwave.p2p.app.job;
 
 
+import com.alibaba.fastjson.JSON;
 import com.snowwave.p2p.common.buffer.BufferManager;
 import com.snowwave.p2p.common.buffer.Consumer;
 import com.snowwave.p2p.common.buffer.Producer;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -16,48 +18,56 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 @Component
 public class StatisticsJob {
-    private final Map<String, Long> topicWrittenFpsMap = new ConcurrentHashMap<>();
-    private final Map<String, Long> topicConsumeFpsMap = new ConcurrentHashMap<>();
+    private final Map<String, Long> writtenFpsRecord = new ConcurrentHashMap<>();
+    private final Map<String, Long> consumeFpsRecord = new ConcurrentHashMap<>();
     private final NumberFormat nf = NumberFormat.getNumberInstance();
-    private final StringBuilder sb = new StringBuilder();
+    private Map<String, Metrics> statisticsMetrics = new ConcurrentHashMap<>();
     private static final long cycle = 10000;
 
     @Scheduled(fixedRate = cycle)
-    private void doStatistic() {
+    public void doStatistic() {
         nf.setMaximumFractionDigits(1);
         Map<String, Producer> producerMap = BufferManager.getProducerMap();
         Set<String> topics = producerMap.keySet();
         for (String topic : topics) {
+            Metrics metrics = statisticsMetrics.computeIfAbsent(topic, k -> new Metrics());
             Producer producer = producerMap.get(topic);
             long curCursorIndex = producer.getCursorIndex();
-            if (topicWrittenFpsMap.containsKey(topic)) {
-                long lastCursorIndex = topicWrittenFpsMap.get(topic);
-                topicWrittenFpsMap.replace(topic, curCursorIndex);
+            if (writtenFpsRecord.containsKey(topic)) {
+                long lastCursorIndex = writtenFpsRecord.get(topic);
+                writtenFpsRecord.replace(topic, curCursorIndex);
                 double writtenFps = (double) (curCursorIndex - lastCursorIndex) * 1000 / cycle;
                 double costMillis = 1000 / writtenFps;
                 producer.updateWrittenCost(costMillis);
-                sb.append("{ ").append("topic: ").append(topic).append(", ").append("writtenFps: ").append(nf.format(writtenFps))
-                        .append(", ").append("oneFpsCost: ").append(nf.format(costMillis)).append("} ");
+                metrics.setWrittenFps(writtenFps);
+                metrics.setOneFpsWrittenCost(nf.format(costMillis));
             } else {
-                topicWrittenFpsMap.put(topic, curCursorIndex);
+                writtenFpsRecord.put(topic, curCursorIndex);
+                metrics.setWrittenFps(0);
+                metrics.setOneFpsWrittenCost(nf.format(0));
+            }
+
+            Map<String, Consumer> consumerMap = BufferManager.getConsumers(topic);
+            if (consumerMap != null) {
+                for (String consumerId : consumerMap.keySet()) {
+                    Consumer consumer = consumerMap.get(consumerId);
+                    long curReadIndex = consumer.getReadCursor();
+                    if (consumeFpsRecord.containsKey(consumerId)) {
+                        long lastReadIndex = consumeFpsRecord.get(consumerId);
+                        double consumeFps = (double) (curReadIndex - lastReadIndex) * 1000 / cycle;
+                        metrics.updateConsumeFps(consumerId, consumeFps);
+                        consumeFpsRecord.replace(consumerId, curReadIndex);
+                        if (consumeFps <= 0) {
+                            BufferManager.removeConsumer(consumer.getTopic(), consumer.getConsumerId());
+                            consumeFpsRecord.remove(consumerId);
+                        }
+                    } else {
+                        consumeFpsRecord.put(consumerId, curReadIndex);
+                    }
+                }
             }
         }
 
-        Map<String, Consumer> consumerMap = BufferManager.getConsumerMap();
-        Set<String> consumerKeys = consumerMap.keySet();
-        for (String key : consumerKeys) {
-            long curReadIndex = consumerMap.get(key).getReadCursor();
-            if (topicConsumeFpsMap.containsKey(key)) {
-                long lastReadIndex = topicConsumeFpsMap.get(key);
-                topicConsumeFpsMap.replace(key, curReadIndex);
-                sb.append("{ ").append("consumerKey: ").append(key).append(", ").append("consumeFps: ")
-                        .append(nf.format((double) (curReadIndex - lastReadIndex) * 1000 / cycle)).append("} ");
-            } else {
-                topicConsumeFpsMap.put(key, curReadIndex);
-            }
-        }
-
-        log.info("broker fps:{}", sb);
-        sb.delete(0, sb.length());
+        log.info("broker info: {}", JSON.toJSONString(statisticsMetrics));
     }
 }

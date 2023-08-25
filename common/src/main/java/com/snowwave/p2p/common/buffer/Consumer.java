@@ -45,6 +45,14 @@ public class Consumer implements Observer {
         this.readCursor = new AtomicLong(0L);
     }
 
+    public String getTopic() {
+        return ringBuffer.getTopic();
+    }
+
+    public String getConsumerId() {
+        return consumerId;
+    }
+
     public long getReadCursor() {
         return readCursor.get();
     }
@@ -53,7 +61,7 @@ public class Consumer implements Observer {
         int interval = nextInterval();
         long index = nextIndex(interval);
         int point = (int) (index % readControlRing.length);
-        //log.debug("topic:{} consumer:{} begin read point:{}, index:{} interval:{}", ringBuffer.getTopic(), consumerId, point, index, interval);
+        log.info("topic:{} consumer:{} begin read point:{}, index:{} interval:{}", ringBuffer.getTopic(), consumerId, point, index, interval);
         return casOrParkRead(point, interval);
     }
 
@@ -65,26 +73,28 @@ public class Consumer implements Observer {
 
     private ByteBuf casOrParkRead(int point, int interval) {
         int casMaxTimes = 0;
-        long initialParkTime = averageCost * interval * oneMillis;
+        //long initialParkTime = averageCost * interval * oneMillis;
+        long beforeWriteCursor = ringBuffer.getWriteCursor();
+        int writeIncrease = 0;
         while (true) {
             if (casMaxTimes <= 3) {
                 if (readControlRing[point].compareAndSet(1, 0)) {
+                    log.info("topic:{}, consumer:{}, point:{}, cas count:{} read success, writtenFps:{}", ringBuffer.getTopic(), consumerId,
+                            point, casMaxTimes, ringBuffer.getWriteCursor());
                     return doRead(point);
                 }
-
                 casMaxTimes++;
-                int gap = interval - (int) (ringBuffer.getWriteCursor() - lastWriteCursor);
-                long parkTime;
-                if (gap > 0){
-                    parkTime = Math.min((long) (ringBuffer.getAverageWrittenCost() * gap * oneMillis), initialParkTime);
-                } else{
-                    parkTime = oneCost;
+                long afterWriteCursor = ringBuffer.getWriteCursor();
+                if ((writeIncrease = (int) (afterWriteCursor - beforeWriteCursor)) >= interval) {
+                    continue;
                 }
 
+                int gap = interval - writeIncrease;
+                long parkTime = (long) (ringBuffer.getAverageWrittenCost() * (gap + 1) * oneMillis);
+                log.info("topic:{}, consumer:{}, point:{}, cas count:{}, begin parkTime:{}, writtenFps:{}", ringBuffer.getTopic(), consumerId,
+                        point, casMaxTimes, parkTime, ringBuffer.getWriteCursor());
                 LockSupport.parkNanos(parkTime);
-                log.debug("topic:{}, consumer:{}, read point:{}, jump gap:{}, cas count:{}, parkTime:{}", ringBuffer.getTopic(), consumerId,
-                        point, gap, casMaxTimes, parkTime);
-                lastWriteCursor = ringBuffer.getWriteCursor();
+
             } else {
                 return doLongParkRead(point, interval);
             }
@@ -96,7 +106,7 @@ public class Consumer implements Observer {
         if (readControlRing[point].compareAndSet(1, 0)) {
             return doRead(point);
         } else {
-            log.debug("topic:{} consumer:{} read failed point:{}", ringBuffer.getTopic(), consumerId, point);
+            log.warn("topic:{} consumer:{} point:{} read failed", ringBuffer.getTopic(), consumerId, point);
             return null;
         }
     }
@@ -107,11 +117,10 @@ public class Consumer implements Observer {
         long start = System.currentTimeMillis();
         LockSupport.parkNanos(parkTime);
         parkRing[point] = null;
-        log.debug("topic:{} consumer:{} park at point:{} cost:{} millis ", ringBuffer.getTopic(), consumerId, point, System.currentTimeMillis() - start);
+        log.info("topic:{} consumer:{} long park at point:{} cost:{} millis ", ringBuffer.getTopic(), consumerId, point, System.currentTimeMillis() - start);
     }
 
     private ByteBuf doRead(int point) {
-        log.debug("topic:{} consumer:{} read success point:{}", ringBuffer.getTopic(), consumerId, point);
         ByteBuf buf = ringBuffer.read(point);
         readControlRing[point].setVolatile(0);
         readCursor.incrementAndGet();
@@ -145,7 +154,7 @@ public class Consumer implements Observer {
         if (parkRing[point] != null) {
             LockSupport.unpark(parkRing[point]);
             parkRing[point] = null;
-            log.debug("topic:{} consumer:{} read unpark point:{}", ringBuffer.getTopic(), consumerId, point);
+            log.info("topic:{} consumer:{} point:{} unPark success", ringBuffer.getTopic(), consumerId, point);
         }
     }
 
@@ -156,7 +165,7 @@ public class Consumer implements Observer {
             }
         }
 
-        if (readControlRing != null){
+        if (readControlRing != null) {
             readControlRing = null;
         }
 
